@@ -30,18 +30,48 @@ function Layer.tilelayer:_init()
 	self._spriteBatches = {}
 	for _, tileset in ipairs(self._map.tilesets) do
 		self._spriteBatches[tileset._image] = love.graphics.newSpriteBatch(tileset._image, #self.data)
-	end
-	for n, gid in ipairs(self.data) do
-		if gid ~= 0 then
-			local x, y = getCoordinates(n, self.width)
-			local image, q = self._map:_getTile(gid)
-			self._spriteBatches[image]:add(q,
-				x * self._map.tilewidth, y * self._map.tileheight)
+		for i = 1, #self.data do
+			self._spriteBatches[tileset._image]:add(0, 0, 0, 0)
 		end
 	end
 end
 
-function Layer.tilelayer:draw()
+function Layer.tilelayer:_setCullSize(w, h)
+	self._cw = w
+	self._ch = h
+	local bufferSize = math.ceil(w / self._map.tilewidth) * math.ceil(h / self._map.tileheight)
+	bufferSize = math.min(bufferSize, #self.data)
+	print(bufferSize)
+	for _, spriteBatch in pairs(self._spriteBatches) do
+		spriteBatch:setBufferSize(bufferSize)
+	end
+end
+
+function Layer.tilelayer:draw(cx, cy)
+	for _, spriteBatch in pairs(self._spriteBatches) do
+		spriteBatch:clear()
+	end
+	cx, cy = cx or 0, cy or 0
+	local id = 0
+	for n, gid in ipairs(self.data) do
+		if gid ~= 0 then
+			local x, y = getCoordinates(n, self.width)
+			local drawTile = true
+			if self._cw and self._ch then
+				drawTile = x < cx + self._cw and
+				           x + self._map.tilewidth > cx and
+				           y < cy + self._ch and
+				           y + self._map.tileheight > cy
+			end
+			if drawTile then
+				local image, q = self._map:_getTile(gid)
+				id = id + 1
+				print(id)
+				self._spriteBatches[image]:set(id, q,
+					x * self._map.tilewidth, y * self._map.tileheight)
+			end
+		end
+	end
 	love.graphics.setColor(255, 255, 255)
 	for _, spriteBatch in pairs(self._spriteBatches) do
 		love.graphics.draw(spriteBatch)
@@ -56,7 +86,9 @@ function Layer.imagelayer:_init()
 	self._image = love.graphics.newImage(path)
 end
 
-function Layer.imagelayer:draw()
+function Layer.imagelayer:_setCullSize(w, h) end
+
+function Layer.imagelayer:draw(cx, cy)
 	love.graphics.draw(self._image)
 end
 
@@ -65,7 +97,9 @@ Layer.objectgroup.__index = Layer.objectgroup
 
 function Layer.objectgroup:_init() end
 
-function Layer.objectgroup:draw() end
+function Layer.objectgroup:_setCullSize(w, h) end
+
+function Layer.objectgroup:draw(cx, cy) end
 
 Layer.group = {}
 Layer.group.__index = Layer.group
@@ -79,9 +113,15 @@ function Layer.group:_init()
 	end
 end
 
-function Layer.group:draw()
+function Layer.group:_setCullSize(w, h)
 	for _, layer in ipairs(self.layers) do
-		layer:draw()
+		if layer.setCullSize then layer:_setCullSize(w, h) end
+	end
+end
+
+function Layer.group:draw(cx, cy)
+	for _, layer in ipairs(self.layers) do
+		layer:draw(cx, cy)
 	end
 end
 
@@ -128,14 +168,20 @@ function Map:_getTile(gid)
 	return ts._image, q
 end
 
-function Map:draw()
+function Map:setCullSize(w, h)
+	for _, layer in ipairs(self.layers) do
+		layer:_setCullSize(w, h)
+	end
+end
+
+function Map:draw(cx, cy)
 	if self.backgroundcolor then
 		love.graphics.setColor(self.backgroundcolor)
 		love.graphics.rectangle('fill', 0, 0,
 			self.width * self.tilewidth, self.height * self.tileheight)
 	end
 	for _, layer in ipairs(self.layers) do
-		layer:draw()
+		layer:draw(cx, cy)
 	end
 end
 
