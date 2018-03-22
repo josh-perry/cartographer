@@ -27,6 +27,8 @@ local cartographer = {
 	]]
 }
 
+local zOffset = 100
+
 -- https://stackoverflow.com/a/12191225
 local function splitPath(path)
     return string.match(path, '(.-)([^\\/]-%.?([^%.\\/]*))$')
@@ -68,10 +70,11 @@ function Layer.tilelayer:_init()
 	end
 end
 
-function Layer.tilelayer:draw()
-	love.graphics.setColor(255, 255, 255)
+function Layer.tilelayer:draw(deep)
+	if deep == nil then error("Deep is nil!") end
+	deep:setColor(255, 255, 255)
 	for _, spriteBatch in pairs(self._spriteBatches) do
-		love.graphics.draw(spriteBatch)
+		deep:draw(spriteBatch, 0, 0, self.z)
 	end
 end
 
@@ -83,8 +86,8 @@ function Layer.imagelayer:_init()
 	self._image = love.graphics.newImage(path)
 end
 
-function Layer.imagelayer:draw()
-	love.graphics.draw(self._image)
+function Layer.imagelayer:draw(deep)
+	deep:draw(self._image)
 end
 
 Layer.objectgroup = {}
@@ -106,16 +109,17 @@ function Layer.group:_init()
 	end
 end
 
-function Layer.group:draw()
+function Layer.group:draw(deep)
 	for _, layer in ipairs(self.layers) do
-		layer:draw()
+		layer:draw(deep)
 	end
 end
 
 local Map = {}
 Map.__index = Map
 
-function Map:_init(path)
+function Map:_init(path, deep)
+	self.deep = deep
 	self.dir = splitPath(path)
 	self:_loadTilesetImages()
 	self:_initLayers()
@@ -129,7 +133,9 @@ function Map:_loadTilesetImages()
 end
 
 function Map:_initLayers()
-	for _, layer in ipairs(self.layers) do
+	for i, layer in ipairs(self.layers) do
+		layer.z = i * zOffset
+
 		self.layers[layer.name] = layer
 		setmetatable(layer, Layer[layer.type])
 		layer._map = self
@@ -157,19 +163,20 @@ end
 
 function Map:draw()
 	if self.backgroundcolor then
-		love.graphics.setColor(self.backgroundcolor)
-		love.graphics.rectangle('fill', 0, 0,
+		self.deep:setColor(self.backgroundcolor)
+		self.deep:rectangle('fill', 0, 0,
 			self.width * self.tilewidth, self.height * self.tileheight)
 	end
 	for _, layer in ipairs(self.layers) do
-		layer:draw()
+		layer:draw(self.deep)
 	end
 end
 
-function cartographer.load(path)
+function cartographer.load(path, deep)
 	local map = love.filesystem.load(path)()
 	setmetatable(map, Map)
-	map:_init(path)
+
+	map:_init(path, deep)
 	return map
 end
 
